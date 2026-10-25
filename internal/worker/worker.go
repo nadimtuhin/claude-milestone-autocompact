@@ -63,6 +63,7 @@ type Worker struct {
 	SendDeadline   time.Duration
 	ConfirmTimeout time.Duration
 	Poll           time.Duration
+	lastSeen       string
 }
 
 const outerCap = 30 * time.Minute
@@ -91,7 +92,7 @@ func (w *Worker) Run(surface string) {
 		}
 		sendDeadline := stoppedAt.Add(w.SendDeadline)
 		if !w.Now().Before(sendDeadline) {
-			w.Store.Fail(surface, "not sent before deadline: "+lastErr)
+			w.Store.Fail(surface, "not sent before deadline: "+lastErr+"; last screen: "+w.lastSeen)
 			return
 		}
 		if !w.stableIdle(surface) {
@@ -115,14 +116,31 @@ func (w *Worker) Run(surface string) {
 }
 
 func (w *Worker) stableIdle(surface string) bool {
-	first, err := w.Pane.ReadScreen(surface)
+	first, err := w.read(surface)
 	if err != nil || !IsIdle(first) {
 		return false
 	}
 	w.Sleep(w.Poll)
-	second, err := w.Pane.ReadScreen(surface)
+	second, err := w.read(surface)
 	return err == nil && IsIdle(second)
 }
+
+func (w *Worker) read(surface string) (string, error) {
+	screen, err := w.Pane.ReadScreen(surface)
+	if err != nil {
+		w.lastSeen = "read-screen failed: " + err.Error()
+		return "", err
+	}
+	w.lastSeen = screenTail(screen)
+	return screen, nil
+}
+
+func screenTail(screen string) string {
+	lines := strings.Split(strings.TrimRight(screen, "\n "), "\n")
+	return strings.Join(lines[max(0, len(lines)-diagLines):], " | ")
+}
+
+const diagLines = 6
 
 func (w *Worker) awaitConfirm(surface, resume string) {
 	deadline := w.Now().Add(w.ConfirmTimeout)

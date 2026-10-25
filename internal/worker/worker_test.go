@@ -2,6 +2,7 @@ package worker
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +62,19 @@ func TestIsIdleFalseWhileSpinnerPastOneMinute(t *testing.T) {
 		if IsIdle(screen) {
 			t.Errorf("spinner at %s must count as busy", elapsed)
 		}
+	}
+}
+
+func TestFailureReasonShowsWhatThePaneLooked(t *testing.T) {
+	pane := &fakePane{screens: []string{"old\n✻ Thinking… (esc to interrupt)\n────\n❯ half typed\n────\n  status"}}
+	w, clock := testWorker(t, pane)
+	w.Store.Enqueue("s", "/compact x")
+	*clock = clock.Add(time.Second)
+	w.Store.MarkStopped("s")
+	w.Run("s")
+	got, _ := w.Store.Get("s")
+	if !strings.Contains(got.Reason, "half typed") {
+		t.Fatalf("reason should carry the last screen tail, got %q", got.Reason)
 	}
 }
 
@@ -406,7 +420,7 @@ func TestWorkerScenario2SingleStopPastDeadlineFails(t *testing.T) {
 		t.Fatalf("sent=%v, want nothing sent", pane.sent)
 	}
 	got, ok := store.Get("s")
-	if !ok || got.State != pending.StateFailed || got.Reason != "not sent before deadline: prompt never became idle" {
+	if !ok || got.State != pending.StateFailed || !strings.HasPrefix(got.Reason, "not sent before deadline: prompt never became idle") {
 		t.Fatalf("state=%s reason=%q ok=%v", got.State, got.Reason, ok)
 	}
 	if clock.Sub(t0) != 120*time.Second {
