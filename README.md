@@ -38,3 +38,8 @@ Requires Claude Code running inside cmux (`CMUX_SURFACE_ID` set). Test with `go 
 - `internal/hook`: hook event handling and worker dispatch
 - `internal/pending`: file-backed state store, request queue, and worker locks
 - `internal/worker`: prompt idle detection, command transmission, and detached worker lifecycle
+
+## Troubleshooting
+
+- Renaming or moving the binary breaks sessions that were already running, because their MCP server and hooks hold the old path. Restart those sessions.
+- The worker decides the pane is idle by reading the screen. Claude Code draws the empty prompt as the heart glyph followed by a non-breaking space (U+00A0), so any idle regex must accept U+00A0. If the compaction is never typed, read the `reason` field in `~/.claude/compact-pending/<surface>.failed.json`, which ends with the last lines the worker saw.
