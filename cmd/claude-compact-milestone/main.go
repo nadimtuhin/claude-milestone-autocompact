@@ -6,6 +6,10 @@ import (
 	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/nadimtuhin/claude-compact-milestone/internal/command"
+	"github.com/nadimtuhin/claude-compact-milestone/internal/hook"
+	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
+	"github.com/nadimtuhin/claude-compact-milestone/internal/worker"
 )
 
 type compactInput struct {
@@ -28,9 +32,9 @@ func main() {
 			err = fmt.Errorf("usage: worker <surface>")
 			break
 		}
-		NewWorker().Run(os.Args[2])
+		worker.NewWorker().Run(os.Args[2])
 	case "hook":
-		err = HandleHook(os.Stdin, os.Stdout, DefaultStore(), os.Getenv("CMUX_SURFACE_ID"), spawnWorker)
+		err = hook.HandleHook(os.Stdin, os.Stdout, pending.DefaultStore(), os.Getenv("CMUX_SURFACE_ID"), worker.Spawn)
 	default:
 		err = fmt.Errorf("unknown command %q (serve | worker | hook)", cmd)
 	}
@@ -50,15 +54,15 @@ func serve() error {
 }
 
 func queueCompaction(_ context.Context, _ *mcp.CallToolRequest, in compactInput) (*mcp.CallToolResult, any, error) {
-	command, err := BuildCommand(in.Milestone, in.Keep, in.Drop)
+	cmd, err := command.BuildCommand(in.Milestone, in.Keep, in.Drop)
 	if err != nil {
 		return nil, nil, err
 	}
 	surface := os.Getenv("CMUX_SURFACE_ID")
-	if _, err := DefaultStore().Enqueue(surface, command); err != nil {
+	if _, err := pending.DefaultStore().Enqueue(surface, cmd); err != nil {
 		return nil, nil, err
 	}
-	if err := spawnWorker(surface); err != nil {
+	if err := worker.Spawn(surface); err != nil {
 		return nil, nil, fmt.Errorf("queued, but the worker failed to start: %w", err)
 	}
 	text := "Queued. The /compact will be typed once this turn ends. Finish your turn now."

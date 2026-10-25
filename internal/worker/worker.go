@@ -1,13 +1,14 @@
-package main
+package worker
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
 )
 
 type Pane interface {
@@ -47,7 +48,7 @@ func IsIdle(screen string) bool {
 }
 
 type Worker struct {
-	Store          *Store
+	Store          *pending.Store
 	Pane           Pane
 	Sleep          func(time.Duration)
 	Now            func() time.Time
@@ -57,7 +58,7 @@ type Worker struct {
 }
 
 func NewWorker() *Worker {
-	return &Worker{Store: DefaultStore(), Pane: CmuxPane{}, Sleep: time.Sleep, Now: time.Now,
+	return &Worker{Store: pending.DefaultStore(), Pane: CmuxPane{}, Sleep: time.Sleep, Now: time.Now,
 		SendDeadline: 120 * time.Second, ConfirmTimeout: 180 * time.Second, Poll: 500 * time.Millisecond}
 }
 
@@ -69,7 +70,7 @@ func (w *Worker) Run(surface string) {
 	lastErr := "prompt never became idle"
 	deadline := w.Now().Add(w.SendDeadline)
 	for w.Now().Before(deadline) {
-		if _, ok := w.Store.read(surface, StateQueued); !ok {
+		if _, ok := w.Store.Read(surface, pending.StateQueued); !ok {
 			return
 		}
 		if !w.stableIdle(surface) {
@@ -105,7 +106,7 @@ func (w *Worker) stableIdle(surface string) bool {
 func (w *Worker) awaitConfirm(surface string) {
 	deadline := w.Now().Add(w.ConfirmTimeout)
 	for w.Now().Before(deadline) {
-		if _, ok := w.Store.read(surface, StateInFlight); !ok {
+		if _, ok := w.Store.Read(surface, pending.StateInFlight); !ok {
 			return
 		}
 		w.Sleep(w.Poll)
@@ -113,29 +114,7 @@ func (w *Worker) awaitConfirm(surface string) {
 	w.Store.Fail(surface, "sent, but no post-compaction signal arrived")
 }
 
-func (s *Store) workerLock(surface string) string { return filepath.Join(s.Dir, surface+".worker") }
-
-// invariant: one worker per surface; a lock older than staleWorkerLock belongs to a dead worker.
-const staleWorkerLock = 6 * time.Minute
-
-func (s *Store) AcquireWorker(surface string) bool {
-	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
-		return false
-	}
-	path := s.workerLock(surface)
-	if info, err := os.Stat(path); err == nil && s.Now().Sub(info.ModTime()) > staleWorkerLock {
-		os.Remove(path)
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return false
-	}
-	return f.Close() == nil
-}
-
-func (s *Store) ReleaseWorker(surface string) { os.Remove(s.workerLock(surface)) }
-
-func spawnWorker(surface string) error {
+func Spawn(surface string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err

@@ -1,9 +1,11 @@
-package main
+package worker
 
 import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
 )
 
 const idleScreen = "────\n❯ \n────\n  status"
@@ -32,7 +34,7 @@ func (p *fakePane) Send(_, text string) error {
 
 func testWorker(t *testing.T, pane *fakePane) (*Worker, *time.Time) {
 	clock := time.Unix(1000, 0)
-	store := &Store{Dir: t.TempDir(), Now: func() time.Time { return clock }}
+	store := &pending.Store{Dir: t.TempDir(), Now: func() time.Time { return clock }}
 	w := &Worker{Store: store, Pane: pane, Now: func() time.Time { return clock },
 		SendDeadline: 10 * time.Second, ConfirmTimeout: 10 * time.Second, Poll: time.Second}
 	w.Sleep = func(d time.Duration) { clock = clock.Add(d) }
@@ -66,7 +68,7 @@ func TestWorkerWaitsForIdleThenSendsOnce(t *testing.T) {
 	if len(pane.sent) != 1 || pane.sent[0] != "/compact x" {
 		t.Fatalf("sent %v", pane.sent)
 	}
-	if got, _ := w.Store.Get("s"); got.State != StateConfirmed {
+	if got, _ := w.Store.Get("s"); got.State != pending.StateConfirmed {
 		t.Fatalf("state %s", got.State)
 	}
 }
@@ -77,7 +79,7 @@ func TestWorkerNeverSendsWhileBusyThenFails(t *testing.T) {
 	w.Store.Enqueue("s", "/compact x")
 	w.Run("s")
 	got, _ := w.Store.Get("s")
-	if len(pane.sent) != 0 || got.State != StateFailed {
+	if len(pane.sent) != 0 || got.State != pending.StateFailed {
 		t.Fatalf("sent=%v state=%s", pane.sent, got.State)
 	}
 }
@@ -89,7 +91,7 @@ func TestWorkerDraftRefusalRetriesThenFails(t *testing.T) {
 	w.Store.Enqueue("s", "/compact x")
 	w.Run("s")
 	got, _ := w.Store.Get("s")
-	if got.State != StateFailed || got.Reason == "" || len(pane.sent) < 2 {
+	if got.State != pending.StateFailed || got.Reason == "" || len(pane.sent) < 2 {
 		t.Fatalf("state=%s reason=%q sends=%d", got.State, got.Reason, len(pane.sent))
 	}
 }
@@ -100,7 +102,7 @@ func TestWorkerSentButNeverConfirmedFails(t *testing.T) {
 	w.Store.Enqueue("s", "/compact x")
 	w.Run("s")
 	got, _ := w.Store.Get("s")
-	if len(pane.sent) != 1 || got.State != StateFailed {
+	if len(pane.sent) != 1 || got.State != pending.StateFailed {
 		t.Fatalf("sent=%d state=%s", len(pane.sent), got.State)
 	}
 }

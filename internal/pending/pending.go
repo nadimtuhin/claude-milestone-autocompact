@@ -1,4 +1,4 @@
-package main
+package pending
 
 import (
 	"crypto/rand"
@@ -71,7 +71,7 @@ func (s *Store) write(req Request) error {
 	return os.Rename(tmp.Name(), s.path(req.Surface, req.State))
 }
 
-func (s *Store) read(surface string, state State) (Request, bool) {
+func (s *Store) Read(surface string, state State) (Request, bool) {
 	data, err := os.ReadFile(s.path(surface, state))
 	if err != nil {
 		return Request{}, false
@@ -85,7 +85,7 @@ func (s *Store) read(surface string, state State) (Request, bool) {
 
 func (s *Store) Get(surface string) (Request, bool) {
 	for _, state := range []State{StateInFlight, StateQueued, StateFailed, StateConfirmed} {
-		if req, ok := s.read(surface, state); ok {
+		if req, ok := s.Read(surface, state); ok {
 			return req, true
 		}
 	}
@@ -97,7 +97,7 @@ func (s *Store) Enqueue(surface, command string) (Request, error) {
 		return Request{}, errors.New("CMUX_SURFACE_ID is not set; run Claude Code inside a cmux pane")
 	}
 	for _, active := range []State{StateQueued, StateInFlight} {
-		if _, ok := s.read(surface, active); ok {
+		if _, ok := s.Read(surface, active); ok {
 			return Request{}, fmt.Errorf("a compaction request is already %s for this pane", active)
 		}
 	}
@@ -115,7 +115,7 @@ func (s *Store) Claim(surface string) (Request, bool) {
 	if os.Rename(s.path(surface, StateQueued), s.path(surface, StateInFlight)) != nil {
 		return Request{}, false
 	}
-	req, ok := s.read(surface, StateInFlight)
+	req, ok := s.Read(surface, StateInFlight)
 	if !ok {
 		return Request{}, false
 	}
@@ -128,13 +128,13 @@ func (s *Store) Release(req Request) error {
 }
 
 func (s *Store) Confirm(surface string) bool {
-	req, ok := s.read(surface, StateInFlight)
+	req, ok := s.Read(surface, StateInFlight)
 	return ok && s.move(req, StateInFlight, StateConfirmed, "") == nil
 }
 
 func (s *Store) Fail(surface, reason string) error {
 	for _, from := range []State{StateInFlight, StateQueued} {
-		if req, ok := s.read(surface, from); ok {
+		if req, ok := s.Read(surface, from); ok {
 			return s.move(req, from, StateFailed, reason)
 		}
 	}
@@ -148,3 +148,25 @@ func (s *Store) move(req Request, from, to State, reason string) error {
 	}
 	return os.Remove(s.path(req.Surface, from))
 }
+
+func (s *Store) workerLock(surface string) string { return filepath.Join(s.Dir, surface+".worker") }
+
+// invariant: one worker per surface; a lock older than staleWorkerLock belongs to a dead worker.
+const staleWorkerLock = 6 * time.Minute
+
+func (s *Store) AcquireWorker(surface string) bool {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		return false
+	}
+	path := s.workerLock(surface)
+	if info, err := os.Stat(path); err == nil && s.Now().Sub(info.ModTime()) > staleWorkerLock {
+		os.Remove(path)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return false
+	}
+	return f.Close() == nil
+}
+
+func (s *Store) ReleaseWorker(surface string) { os.Remove(s.workerLock(surface)) }

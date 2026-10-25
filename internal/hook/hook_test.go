@@ -1,12 +1,19 @@
-package main
+package hook
 
 import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
 )
 
-func hookRun(t *testing.T, s *Store, surface, payload string) (woken int, out string) {
+func newTestStore(t *testing.T) *pending.Store {
+	return &pending.Store{Dir: t.TempDir(), Now: func() time.Time { return time.Unix(1000, 0) }}
+}
+
+func hookRun(t *testing.T, s *pending.Store, surface, payload string) (woken int, out string) {
 	var buf bytes.Buffer
 	err := HandleHook(strings.NewReader(payload), &buf, s, surface, func(string) error { woken++; return nil })
 	if err != nil {
@@ -39,7 +46,7 @@ func TestSessionStartCompactConfirmsInFlight(t *testing.T) {
 	s.Enqueue("a", "/compact")
 	s.Claim("a")
 	_, out := hookRun(t, s, "a", `{"hook_event_name":"SessionStart","source":"compact"}`)
-	if got, _ := s.Get("a"); got.State != StateConfirmed || out == "" {
+	if got, _ := s.Get("a"); got.State != pending.StateConfirmed || out == "" {
 		t.Fatalf("state=%s out=%q", got.State, out)
 	}
 }
@@ -49,7 +56,7 @@ func TestSessionStartOtherSourceDoesNotConfirm(t *testing.T) {
 	s.Enqueue("a", "/compact")
 	s.Claim("a")
 	_, out := hookRun(t, s, "a", `{"hook_event_name":"SessionStart","source":"startup"}`)
-	if got, _ := s.Get("a"); got.State != StateInFlight || out != "" {
+	if got, _ := s.Get("a"); got.State != pending.StateInFlight || out != "" {
 		t.Fatalf("state=%s out=%q", got.State, out)
 	}
 }
