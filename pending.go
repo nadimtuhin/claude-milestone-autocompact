@@ -1,0 +1,150 @@
+package main
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+type State string
+
+const (
+	StateQueued    State = "queued"
+	StateInFlight  State = "in_flight"
+	StateConfirmed State = "confirmed"
+	StateFailed    State = "failed"
+)
+
+type Request struct {
+	ID          string `json:"id"`
+	Surface     string `json:"surface"`
+	Command     string `json:"command"`
+	State       State  `json:"state"`
+	Reason      string `json:"reason,omitempty"`
+	RequestedAt int64  `json:"requested_at"`
+}
+
+// invariant: a surface has at most one file per state suffix; Claim relies on rename failing for every caller but one.
+type Store struct {
+	Dir string
+	Now func() time.Time
+}
+
+func DefaultStore() *Store {
+	dir := os.Getenv("COMPACT_MILESTONE_DIR")
+	if dir == "" {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".claude", "compact-pending")
+	}
+	return &Store{Dir: dir, Now: time.Now}
+}
+
+func (s *Store) path(surface string, state State) string {
+	return filepath.Join(s.Dir, surface+"."+string(state)+".json")
+}
+
+func (s *Store) write(req Request) error {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		return err
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(s.Dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), s.path(req.Surface, req.State))
+}
+
+func (s *Store) read(surface string, state State) (Request, bool) {
+	data, err := os.ReadFile(s.path(surface, state))
+	if err != nil {
+		return Request{}, false
+	}
+	var req Request
+	if json.Unmarshal(data, &req) != nil {
+		return Request{}, false
+	}
+	return req, true
+}
+
+func (s *Store) Get(surface string) (Request, bool) {
+	for _, state := range []State{StateInFlight, StateQueued, StateFailed, StateConfirmed} {
+		if req, ok := s.read(surface, state); ok {
+			return req, true
+		}
+	}
+	return Request{}, false
+}
+
+func (s *Store) Enqueue(surface, command string) (Request, error) {
+	if surface == "" {
+		return Request{}, errors.New("CMUX_SURFACE_ID is not set; run Claude Code inside a cmux pane")
+	}
+	for _, active := range []State{StateQueued, StateInFlight} {
+		if _, ok := s.read(surface, active); ok {
+			return Request{}, fmt.Errorf("a compaction request is already %s for this pane", active)
+		}
+	}
+	id := make([]byte, 8)
+	if _, err := rand.Read(id); err != nil {
+		return Request{}, err
+	}
+	req := Request{ID: hex.EncodeToString(id), Surface: surface, Command: command, State: StateQueued, RequestedAt: s.Now().Unix()}
+	os.Remove(s.path(surface, StateFailed))
+	os.Remove(s.path(surface, StateConfirmed))
+	return req, s.write(req)
+}
+
+func (s *Store) Claim(surface string) (Request, bool) {
+	if os.Rename(s.path(surface, StateQueued), s.path(surface, StateInFlight)) != nil {
+		return Request{}, false
+	}
+	req, ok := s.read(surface, StateInFlight)
+	if !ok {
+		return Request{}, false
+	}
+	req.State = StateInFlight
+	return req, s.write(req) == nil
+}
+
+func (s *Store) Release(req Request) error {
+	return s.move(req, StateInFlight, StateQueued, "")
+}
+
+func (s *Store) Confirm(surface string) bool {
+	req, ok := s.read(surface, StateInFlight)
+	return ok && s.move(req, StateInFlight, StateConfirmed, "") == nil
+}
+
+func (s *Store) Fail(surface, reason string) error {
+	for _, from := range []State{StateInFlight, StateQueued} {
+		if req, ok := s.read(surface, from); ok {
+			return s.move(req, from, StateFailed, reason)
+		}
+	}
+	return errors.New("no active request to fail")
+}
+
+func (s *Store) move(req Request, from, to State, reason string) error {
+	req.State, req.Reason = to, reason
+	if err := s.write(req); err != nil {
+		return err
+	}
+	return os.Remove(s.path(req.Surface, from))
+}
