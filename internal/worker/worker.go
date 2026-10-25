@@ -61,7 +61,7 @@ type Worker struct {
 
 func NewWorker() *Worker {
 	return &Worker{Store: pending.DefaultStore(), Pane: CmuxPane{}, Sleep: time.Sleep, Now: time.Now,
-		SendDeadline: 120 * time.Second, ConfirmTimeout: 180 * time.Second, Poll: 500 * time.Millisecond}
+		SendDeadline: 120 * time.Second, ConfirmTimeout: 10 * time.Minute, Poll: 500 * time.Millisecond}
 }
 
 func (w *Worker) Run(surface string) {
