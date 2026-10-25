@@ -55,6 +55,15 @@ func TestIsIdleFalseWhileSpinnerRuns(t *testing.T) {
 	}
 }
 
+func TestIsIdleFalseWhileSpinnerPastOneMinute(t *testing.T) {
+	for _, elapsed := range []string{"1m 23s", "12m 5s", "1h 2m 3s"} {
+		screen := "✻ Cooking… (" + elapsed + " · ↓ 9k tokens)\n────\n❯ \n────\n"
+		if IsIdle(screen) {
+			t.Errorf("spinner at %s must count as busy", elapsed)
+		}
+	}
+}
+
 func TestWorkerWaitsForIdleThenSendsOnce(t *testing.T) {
 	pane := &fakePane{screens: []string{busyScreen, busyScreen, idleScreen}}
 	w, _ := testWorker(t, pane)

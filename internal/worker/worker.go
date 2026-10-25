@@ -33,7 +33,7 @@ func (CmuxPane) Send(surface, text string) error {
 }
 
 // why: newer Claude Code drops "esc to interrupt"; the spinner line "✻ Verb… (16s · …" is the busy signal.
-var spinnerLine = regexp.MustCompile(`…\s*\(\d+s`)
+var spinnerLine = regexp.MustCompile(`…\s*\((\d+h )?(\d+m )?\d+s`)
 
 func IsIdle(screen string) bool {
 	if strings.Contains(screen, "esc to interrupt") || spinnerLine.MatchString(screen) {
