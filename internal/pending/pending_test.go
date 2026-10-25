@@ -1,6 +1,8 @@
 package pending
 
 import (
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -173,5 +175,29 @@ func TestEnqueueRejectsFreshInFlightRequest(t *testing.T) {
 	s.Now = func() time.Time { return time.Unix(1000, 0).Add(9 * time.Minute) }
 	if _, err := s.Enqueue("a", "/compact 2"); err == nil {
 		t.Fatal("enqueue over fresh in_flight request must fail")
+	}
+}
+
+func TestMarkStoppedAndStoppedAt(t *testing.T) {
+	s := newTestStore(t)
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("expected missing stopped marker to return false")
+	}
+	if err := s.MarkStopped("a"); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := s.StoppedAt("a")
+	if !ok || !got.Equal(time.Unix(1000, 0)) {
+		t.Fatalf("unexpected stopped at: got=%v ok=%v", got, ok)
+	}
+}
+
+func TestStoppedAtCorruptReturnsFalse(t *testing.T) {
+	s := newTestStore(t)
+	if err := os.WriteFile(filepath.Join(s.Dir, "a.stopped"), []byte("garbage"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("expected corrupted marker to return false")
 	}
 }

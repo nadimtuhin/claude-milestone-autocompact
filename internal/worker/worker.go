@@ -59,6 +59,8 @@ type Worker struct {
 	Poll           time.Duration
 }
 
+const outerCap = 30 * time.Minute
+
 func NewWorker() *Worker {
 	return &Worker{Store: pending.DefaultStore(), Pane: CmuxPane{}, Sleep: time.Sleep, Now: time.Now,
 		SendDeadline: 120 * time.Second, ConfirmTimeout: 10 * time.Minute, Poll: 500 * time.Millisecond}
@@ -70,29 +72,40 @@ func (w *Worker) Run(surface string) {
 	}
 	defer w.Store.ReleaseWorker(surface)
 	lastErr := "prompt never became idle"
-	deadline := w.Now().Add(w.SendDeadline)
-	for w.Now().Before(deadline) {
-		if _, ok := w.Store.Read(surface, pending.StateQueued); !ok {
+	outerDeadline := w.Now().Add(outerCap)
+	for w.Now().Before(outerDeadline) {
+		req, ok := w.Store.Read(surface, pending.StateQueued)
+		if !ok {
+			return
+		}
+		stoppedAt, ok := w.Store.StoppedAt(surface)
+		if !ok || !stoppedAt.After(time.Unix(req.RequestedAt, 0)) {
+			w.Sleep(w.Poll)
+			continue
+		}
+		sendDeadline := stoppedAt.Add(w.SendDeadline)
+		if !w.Now().Before(sendDeadline) {
+			w.Store.Fail(surface, "not sent before deadline: "+lastErr)
 			return
 		}
 		if !w.stableIdle(surface) {
 			w.Sleep(w.Poll)
 			continue
 		}
-		req, ok := w.Store.Claim(surface)
+		claimed, ok := w.Store.Claim(surface)
 		if !ok {
 			return
 		}
-		err := w.Pane.Send(surface, req.Command)
+		err := w.Pane.Send(surface, claimed.Command)
 		if err == nil {
 			w.awaitConfirm(surface)
 			return
 		}
 		lastErr = err.Error()
-		w.Store.Release(req)
+		w.Store.Release(claimed)
 		w.Sleep(w.Poll)
 	}
-	w.Store.Fail(surface, "not sent before deadline: "+lastErr)
+	w.Store.Fail(surface, "not sent before deadline: turn outlasted 30m outer cap")
 }
 
 func (w *Worker) stableIdle(surface string) bool {

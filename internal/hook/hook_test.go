@@ -60,3 +60,20 @@ func TestSessionStartOtherSourceDoesNotConfirm(t *testing.T) {
 		t.Fatalf("state=%s out=%q", got.State, out)
 	}
 }
+
+func TestStopEventQueuedWritesMarkerAndStopHookActiveWritesNothing(t *testing.T) {
+	s := newTestStore(t)
+	s.Enqueue("a", "/compact")
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("stopped marker should not exist before Stop event")
+	}
+	hookRun(t, s, "a", `{"hook_event_name":"Stop","stop_hook_active":true}`)
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("stop_hook_active=true must not write marker")
+	}
+	hookRun(t, s, "a", `{"hook_event_name":"Stop"}`)
+	got, ok := s.StoppedAt("a")
+	if !ok || !got.Equal(time.Unix(1000, 0)) {
+		t.Fatalf("unexpected marker: got=%v ok=%v", got, ok)
+	}
+}
