@@ -159,7 +159,7 @@ func (s *Store) move(req Request, from, to State, reason string) error {
 func (s *Store) workerLock(surface string) string { return filepath.Join(s.Dir, surface+".worker") }
 
 // invariant: one worker per surface; a lock older than staleWorkerLock belongs to a dead worker.
-const staleWorkerLock = 6 * time.Minute
+const staleWorkerLock = 45 * time.Minute
 
 func (s *Store) AcquireWorker(surface string) bool {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {

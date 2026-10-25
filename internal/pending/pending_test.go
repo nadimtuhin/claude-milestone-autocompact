@@ -201,3 +201,15 @@ func TestStoppedAtCorruptReturnsFalse(t *testing.T) {
 		t.Fatal("expected corrupted marker to return false")
 	}
 }
+
+func TestAcquireWorkerKeepsLockOfWorkerStillWithinItsOuterCap(t *testing.T) {
+	s := newTestStore(t)
+	if !s.AcquireWorker("a") {
+		t.Fatal("first acquire failed")
+	}
+	s.Now = func() time.Time { return time.Unix(1000, 0).Add(20 * time.Minute) }
+	os.Chtimes(filepath.Join(s.Dir, "a.worker"), time.Unix(1000, 0), time.Unix(1000, 0))
+	if s.AcquireWorker("a") {
+		t.Fatal("a 20m-old lock may belong to a live worker waiting out a long turn")
+	}
+}
