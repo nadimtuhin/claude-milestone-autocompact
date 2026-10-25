@@ -77,3 +77,31 @@ func TestStopEventQueuedWritesMarkerAndStopHookActiveWritesNothing(t *testing.T)
 		t.Fatalf("unexpected marker: got=%v ok=%v", got, ok)
 	}
 }
+
+func TestHookScenario3StopWithNoQueuedRequestWritesNoMarkerAndWakesNoWorker(t *testing.T) {
+	s := newTestStore(t)
+	woken, _ := hookRun(t, s, "a", `{"hook_event_name":"Stop"}`)
+	if woken != 0 {
+		t.Fatalf("woken=%d, want 0", woken)
+	}
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("stopped marker should not be written when no request is queued")
+	}
+}
+
+func TestSecondStopEventWhenQueuedRefreshesMarker(t *testing.T) {
+	clock := time.Unix(1000, 0)
+	s := &pending.Store{Dir: t.TempDir(), Now: func() time.Time { return clock }}
+	s.Enqueue("a", "/compact")
+	hookRun(t, s, "a", `{"hook_event_name":"Stop"}`)
+	got, ok := s.StoppedAt("a")
+	if !ok || !got.Equal(time.Unix(1000, 0)) {
+		t.Fatalf("first marker=%v, want %v", got, clock)
+	}
+	clock = time.Unix(1100, 0)
+	hookRun(t, s, "a", `{"hook_event_name":"Stop"}`)
+	got, ok = s.StoppedAt("a")
+	if !ok || !got.Equal(time.Unix(1100, 0)) {
+		t.Fatalf("refreshed marker=%v, want %v", got, clock)
+	}
+}

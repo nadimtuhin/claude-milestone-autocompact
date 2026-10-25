@@ -323,3 +323,124 @@ func TestWorkerResumeWaitsForIdle(t *testing.T) {
 		t.Fatalf("sent %v", pane.sent)
 	}
 }
+
+func TestWorkerScenario1SecondStopExtendsDeadlineAndSends(t *testing.T) {
+	screens := make([]string, 126)
+	for i := 0; i < 125; i++ {
+		screens[i] = busyScreen
+	}
+	screens[125] = idleScreen
+	pane := &fakePane{screens: screens}
+
+	t0 := time.Unix(1000, 0)
+	clock := t0.Add(-time.Second)
+	store := &pending.Store{Dir: t.TempDir(), Now: func() time.Time { return clock }}
+	store.Enqueue("s", "/compact x")
+
+	clock = t0
+	store.MarkStopped("s")
+
+	w := &Worker{
+		Store:          store,
+		Pane:           pane,
+		Now:            func() time.Time { return clock },
+		SendDeadline:   120 * time.Second,
+		ConfirmTimeout: 10 * time.Second,
+		Poll:           time.Second,
+	}
+	w.Sleep = func(d time.Duration) {
+		clock = clock.Add(d)
+		if clock.Equal(t0.Add(100 * time.Second)) {
+			store.MarkStopped("s")
+		}
+		if len(pane.sent) == 1 && clock.Sub(t0) >= 130*time.Second {
+			store.Confirm("s")
+		}
+	}
+
+	w.Run("s")
+
+	if len(pane.sent) != 1 || pane.sent[0] != "/compact x" {
+		t.Fatalf("sent=%v, want [/compact x]", pane.sent)
+	}
+	got, ok := store.Get("s")
+	if !ok || got.State == pending.StateFailed {
+		t.Fatalf("state=%s, want not failed", got.State)
+	}
+	if clock.Before(t0.Add(130 * time.Second)) {
+		t.Fatalf("clock=%v, want passed %v", clock, t0.Add(130*time.Second))
+	}
+}
+
+func TestWorkerScenario2SingleStopPastDeadlineFails(t *testing.T) {
+	pane := &fakePane{screens: []string{busyScreen}}
+	t0 := time.Unix(1000, 0)
+	clock := t0.Add(-time.Second)
+	store := &pending.Store{Dir: t.TempDir(), Now: func() time.Time { return clock }}
+	store.Enqueue("s", "/compact x")
+
+	clock = t0
+	store.MarkStopped("s")
+
+	w := &Worker{
+		Store:          store,
+		Pane:           pane,
+		Now:            func() time.Time { return clock },
+		SendDeadline:   120 * time.Second,
+		ConfirmTimeout: 10 * time.Second,
+		Poll:           time.Second,
+		Sleep:          func(d time.Duration) { clock = clock.Add(d) },
+	}
+
+	w.Run("s")
+
+	if len(pane.sent) != 0 {
+		t.Fatalf("sent=%v, want nothing sent", pane.sent)
+	}
+	got, ok := store.Get("s")
+	if !ok || got.State != pending.StateFailed || got.Reason != "not sent before deadline: prompt never became idle" {
+		t.Fatalf("state=%s reason=%q ok=%v", got.State, got.Reason, ok)
+	}
+	if clock.Sub(t0) != 120*time.Second {
+		t.Fatalf("failed at %v, want %v", clock.Sub(t0), 120*time.Second)
+	}
+}
+
+func TestWorkerScenario4OuterCapElapsedWithRepeatedStopsFails(t *testing.T) {
+	pane := &fakePane{screens: []string{busyScreen}}
+	t0 := time.Unix(1000, 0)
+	clock := t0.Add(-time.Second)
+	store := &pending.Store{Dir: t.TempDir(), Now: func() time.Time { return clock }}
+	store.Enqueue("s", "/compact x")
+
+	clock = t0
+	store.MarkStopped("s")
+
+	w := &Worker{
+		Store:          store,
+		Pane:           pane,
+		Now:            func() time.Time { return clock },
+		SendDeadline:   120 * time.Second,
+		ConfirmTimeout: 10 * time.Second,
+		Poll:           time.Second,
+	}
+	w.Sleep = func(d time.Duration) {
+		clock = clock.Add(d)
+		if clock.Sub(t0)%time.Minute == 0 {
+			store.MarkStopped("s")
+		}
+	}
+
+	w.Run("s")
+
+	if len(pane.sent) != 0 {
+		t.Fatalf("sent=%v, want nothing sent", pane.sent)
+	}
+	got, ok := store.Get("s")
+	if !ok || got.State != pending.StateFailed || got.Reason != "not sent before deadline: turn outlasted 30m outer cap" {
+		t.Fatalf("state=%s reason=%q ok=%v", got.State, got.Reason, ok)
+	}
+	if clock.Sub(t0) != 30*time.Minute {
+		t.Fatalf("elapsed=%v, want %v", clock.Sub(t0), 30*time.Minute)
+	}
+}
