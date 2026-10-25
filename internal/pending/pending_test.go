@@ -1,6 +1,8 @@
 package pending
 
 import (
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -106,5 +108,29 @@ func TestFailRecordsReason(t *testing.T) {
 	got, _ := s.Get("a")
 	if got.State != StateFailed || got.Reason != "draft present" {
 		t.Fatalf("%+v", got)
+	}
+}
+
+func TestMarkStoppedAndStoppedAt(t *testing.T) {
+	s := newTestStore(t)
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("expected missing stopped marker to return false")
+	}
+	if err := s.MarkStopped("a"); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := s.StoppedAt("a")
+	if !ok || !got.Equal(time.Unix(1000, 0)) {
+		t.Fatalf("unexpected stopped at: got=%v ok=%v", got, ok)
+	}
+}
+
+func TestStoppedAtCorruptReturnsFalse(t *testing.T) {
+	s := newTestStore(t)
+	if err := os.WriteFile(filepath.Join(s.Dir, "a.stopped"), []byte("garbage"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("expected corrupted marker to return false")
 	}
 }

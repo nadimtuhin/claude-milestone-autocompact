@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -170,3 +171,30 @@ func (s *Store) AcquireWorker(surface string) bool {
 }
 
 func (s *Store) ReleaseWorker(surface string) { os.Remove(s.workerLock(surface)) }
+
+func (s *Store) stoppedPath(surface string) string {
+	return filepath.Join(s.Dir, surface+".stopped")
+}
+
+func (s *Store) MarkStopped(surface string) error {
+	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
+		return err
+	}
+	now := time.Now()
+	if s.Now != nil {
+		now = s.Now()
+	}
+	return os.WriteFile(s.stoppedPath(surface), []byte(now.Format(time.RFC3339Nano)), 0o600)
+}
+
+func (s *Store) StoppedAt(surface string) (time.Time, bool) {
+	data, err := os.ReadFile(s.stoppedPath(surface))
+	if err != nil {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(data)))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}

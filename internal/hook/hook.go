@@ -24,6 +24,9 @@ func HandleHook(in io.Reader, out io.Writer, store *pending.Store, surface strin
 	switch {
 	case input.Event == "Stop" && !input.StopActive:
 		if _, ok := store.Read(surface, pending.StateQueued); ok {
+			if err := store.MarkStopped(surface); err != nil {
+				return err
+			}
 			return wake(surface)
 		}
 	case input.Event == "PostCompact", input.Event == "SessionStart" && input.Source == "compact":
