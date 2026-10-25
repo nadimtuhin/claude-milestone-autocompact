@@ -6,10 +6,10 @@ import (
 	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/nadimtuhin/claude-compact-milestone/internal/command"
-	"github.com/nadimtuhin/claude-compact-milestone/internal/hook"
-	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
-	"github.com/nadimtuhin/claude-compact-milestone/internal/worker"
+	"github.com/nadimtuhin/claude-milestone-autocompact/internal/command"
+	"github.com/nadimtuhin/claude-milestone-autocompact/internal/hook"
+	"github.com/nadimtuhin/claude-milestone-autocompact/internal/pending"
+	"github.com/nadimtuhin/claude-milestone-autocompact/internal/worker"
 )
 
 type compactInput struct {
@@ -39,13 +39,13 @@ func main() {
 		err = fmt.Errorf("unknown command %q (serve | worker | hook)", cmd)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "claude-compact-milestone:", err)
+		fmt.Fprintln(os.Stderr, "claude-milestone-autocompact:", err)
 		os.Exit(1)
 	}
 }
 
 func serve() error {
-	server := mcp.NewServer(&mcp.Implementation{Name: "claude-compact-milestone", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "claude-milestone-autocompact", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "compact_at_milestone",
 		Description: "Queue a /compact with an explicit keep/drop focus. It is typed into this pane after the current turn ends, so finish your turn after calling it.",

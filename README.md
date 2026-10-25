@@ -1,4 +1,4 @@
-# claude-compact-milestone
+# claude-milestone-autocompact
 
 Let Claude Code compact its own context at a milestone, with an explicit keep/drop focus.
 
@@ -10,14 +10,14 @@ It never uses `--force`, so it will not overwrite a draft you are typing.
 ## Install
 
 ```sh
-go build -o claude-compact-milestone ./cmd/claude-compact-milestone
-claude mcp add --scope user claude-compact-milestone -- "$PWD/claude-compact-milestone" serve
+go build -o claude-milestone-autocompact ./cmd/claude-milestone-autocompact
+claude mcp add --scope user claude-milestone-autocompact -- "$PWD/claude-milestone-autocompact" serve
 ```
 
 Add the hook to the `Stop`, `PostCompact` and `SessionStart` (matcher `compact`) lists in `~/.claude/settings.json`:
 
 ```json
-{ "hooks": [{ "type": "command", "command": "/path/to/claude-compact-milestone hook", "timeout": 10 }] }
+{ "hooks": [{ "type": "command", "command": "/path/to/claude-milestone-autocompact hook", "timeout": 10 }] }
 ```
 
 ## How it works
@@ -30,7 +30,7 @@ Requires Claude Code running inside cmux (`CMUX_SURFACE_ID` set). Test with `go 
 
 ## Layout
 
-- `cmd/claude-compact-milestone`: entrypoint and CLI/MCP wiring
+- `cmd/claude-milestone-autocompact`: entrypoint and CLI/MCP wiring
 - `internal/command`: command builder and input sanitization
 - `internal/hook`: hook event handling and worker dispatch
 - `internal/pending`: file-backed state store, request queue, and worker locks

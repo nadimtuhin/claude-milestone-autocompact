@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
+	"github.com/nadimtuhin/claude-milestone-autocompact/internal/pending"
 )
 
 type Pane interface {

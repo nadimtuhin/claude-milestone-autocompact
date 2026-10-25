@@ -1,4 +1,4 @@
-module github.com/nadimtuhin/claude-compact-milestone
+module github.com/nadimtuhin/claude-milestone-autocompact
 
 go 1.27.2
 

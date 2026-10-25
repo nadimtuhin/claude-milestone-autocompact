@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
+	"github.com/nadimtuhin/claude-milestone-autocompact/internal/pending"
 )
 
 func newTestStore(t *testing.T) *pending.Store {

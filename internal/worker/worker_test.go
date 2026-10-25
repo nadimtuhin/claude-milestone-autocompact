@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nadimtuhin/claude-compact-milestone/internal/pending"
+	"github.com/nadimtuhin/claude-milestone-autocompact/internal/pending"
 )
 
 const idleScreen = "────\n❯ \n────\n  status"
@@ -41,7 +41,7 @@ func testWorker(t *testing.T, pane *fakePane) (*Worker, *time.Time) {
 	return w, &clock
 }
 
-const spinnerScreen = "⏺ Calling claude-compact-milestone…\n✻ Caramelizing… (16s · ↓ 306 tokens)\n────\n❯ \n────\n"
+const spinnerScreen = "⏺ Calling claude-milestone-autocompact…\n✻ Caramelizing… (16s · ↓ 306 tokens)\n────\n❯ \n────\n"
 
 func TestIsIdle(t *testing.T) {
 	if !IsIdle(idleScreen) || IsIdle(busyScreen) || IsIdle("no prompt here") {
