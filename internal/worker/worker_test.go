@@ -64,6 +64,14 @@ func TestIsIdleFalseWhileSpinnerPastOneMinute(t *testing.T) {
 	}
 }
 
+func TestIsIdleIgnoresBusyTextInScrollback(t *testing.T) {
+	scrollback := "⏺ Bash(grep -c 'esc to interrupt')\n  Caramelizing… (16s · ↓ 3 tokens)\n" +
+		"line\nline\nline\nline\nline\n✻ Worked for 34s\n\n────\n❯ \n────\n  status\n  ⏵⏵ bypass · ← 1 agent\n"
+	if !IsIdle(scrollback) {
+		t.Fatal("busy phrases quoted in scrollback far above the prompt must not block idle")
+	}
+}
+
 func TestIsIdleFalseWhenLastPromptIsDialog(t *testing.T) {
 	screen := "Do you trust this folder?\n❯ 1. Yes, I trust this folder\n  2. No\n"
 	if IsIdle(screen) {

@@ -37,16 +37,22 @@ var spinnerLine = regexp.MustCompile(`…\s*\((\d+h )?(\d+m )?\d+s`)
 var emptyPrompt = regexp.MustCompile(`^❯\s*$`)
 
 func IsIdle(screen string) bool {
-	if strings.Contains(screen, "esc to interrupt") || spinnerLine.MatchString(screen) {
-		return false
-	}
 	lines := strings.Split(screen, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		if strings.HasPrefix(lines[i], "❯") {
-			return emptyPrompt.MatchString(lines[i])
+			return emptyPrompt.MatchString(lines[i]) && !busyNear(lines[max(0, i-busyWindow):])
 		}
 	}
 	return false
+}
+
+// why: the busy markers also appear in scrollback when a session quotes them (this tool's own sessions do),
+// so only the lines hugging the prompt box count.
+const busyWindow = 4
+
+func busyNear(lines []string) bool {
+	region := strings.Join(lines, "\n")
+	return strings.Contains(region, "esc to interrupt") || spinnerLine.MatchString(region)
 }
 
 type Worker struct {
