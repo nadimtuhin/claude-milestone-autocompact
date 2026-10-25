@@ -34,7 +34,9 @@ func (CmuxPane) Send(surface, text string) error {
 
 // why: newer Claude Code drops "esc to interrupt"; the spinner line "✻ Verb… (16s · …" is the busy signal.
 var spinnerLine = regexp.MustCompile(`…\s*\((\d+h )?(\d+m )?\d+s`)
-var emptyPrompt = regexp.MustCompile(`^❯\s*$`)
+
+// why: Claude Code draws the empty prompt as "❯" + U+00A0, which RE2 \s does not match.
+var emptyPrompt = regexp.MustCompile(`^❯[\s\x{00a0}]*$`)
 
 func IsIdle(screen string) bool {
 	lines := strings.Split(screen, "\n")

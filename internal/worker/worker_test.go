@@ -78,6 +78,12 @@ func TestFailureReasonShowsWhatThePaneLooked(t *testing.T) {
 	}
 }
 
+func TestIsIdleAcceptsNonBreakingSpaceAfterPrompt(t *testing.T) {
+	if !IsIdle("────\n❯ \n────\n  status") {
+		t.Fatal("Claude Code draws the empty prompt as ❯ plus a non-breaking space")
+	}
+}
+
 func TestIsIdleIgnoresBusyTextInScrollback(t *testing.T) {
 	scrollback := "⏺ Bash(grep -c 'esc to interrupt')\n  Caramelizing… (16s · ↓ 3 tokens)\n" +
 		"line\nline\nline\nline\nline\n✻ Worked for 34s\n\n────\n❯ \n────\n  status\n  ⏵⏵ bypass · ← 1 agent\n"
