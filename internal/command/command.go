@@ -7,7 +7,10 @@ import (
 	"unicode"
 )
 
-const maxCommandLen = 800
+const (
+	maxCommandLen = 800
+	maxResumeLen  = 300
+)
 
 func BuildCommand(milestone string, keep, drop []string) (string, error) {
 	milestone = oneLine(milestone)
@@ -25,6 +28,14 @@ func BuildCommand(milestone string, keep, drop []string) (string, error) {
 		return "", fmt.Errorf("command is %d characters, limit is %d; shorten keep/drop", len(cmd), maxCommandLen)
 	}
 	return cmd, nil
+}
+
+func BuildResume(message string) (string, error) {
+	message = oneLine(message)
+	if len(message) > maxResumeLen {
+		return "", fmt.Errorf("resume is %d characters, limit is %d", len(message), maxResumeLen)
+	}
+	return message, nil
 }
 
 // why: cmux send turns a literal \n into Enter, so backslashes are removed along with control characters.

@@ -27,6 +27,7 @@ type Request struct {
 	ID          string `json:"id"`
 	Surface     string `json:"surface"`
 	Command     string `json:"command"`
+	Resume      string `json:"resume,omitempty"`
 	State       State  `json:"state"`
 	Reason      string `json:"reason,omitempty"`
 	RequestedAt int64  `json:"requested_at"`
@@ -96,6 +97,10 @@ func (s *Store) Get(surface string) (Request, bool) {
 }
 
 func (s *Store) Enqueue(surface, command string) (Request, error) {
+	return s.EnqueueWithResume(surface, command, "")
+}
+
+func (s *Store) EnqueueWithResume(surface, command, resume string) (Request, error) {
 	if surface == "" {
 		return Request{}, errors.New("CMUX_SURFACE_ID is not set; run Claude Code inside a cmux pane")
 	}
@@ -112,7 +117,7 @@ func (s *Store) Enqueue(surface, command string) (Request, error) {
 	if _, err := rand.Read(id); err != nil {
 		return Request{}, err
 	}
-	req := Request{ID: hex.EncodeToString(id), Surface: surface, Command: command, State: StateQueued, RequestedAt: s.Now().Unix()}
+	req := Request{ID: hex.EncodeToString(id), Surface: surface, Command: command, Resume: resume, State: StateQueued, RequestedAt: s.Now().Unix()}
 	os.Remove(s.path(surface, StateFailed))
 	os.Remove(s.path(surface, StateConfirmed))
 	return req, s.write(req)

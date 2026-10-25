@@ -213,3 +213,21 @@ func TestAcquireWorkerKeepsLockOfWorkerStillWithinItsOuterCap(t *testing.T) {
 		t.Fatal("a 20m-old lock may belong to a live worker waiting out a long turn")
 	}
 }
+
+func TestResumeSurvivesClaimAndConfirm(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.EnqueueWithResume("a", "/compact 1", "carry on"); err != nil {
+		t.Fatal(err)
+	}
+	claimed, ok := s.Claim("a")
+	if !ok || claimed.Resume != "carry on" {
+		t.Fatalf("claimed %+v ok=%v", claimed, ok)
+	}
+	if !s.Confirm("a") {
+		t.Fatal("confirm failed")
+	}
+	got, _ := s.Read("a", StateConfirmed)
+	if got.Resume != "carry on" {
+		t.Fatalf("confirmed %+v", got)
+	}
+}

@@ -42,3 +42,26 @@ func TestBuildCommandSingleLine(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildResumeIsOneLine(t *testing.T) {
+	got, err := BuildResume("continue with\nthe next task\\n now")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "continue with the next task n now" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestBuildResumeEmptyMeansOptOut(t *testing.T) {
+	got, err := BuildResume("  \n ")
+	if err != nil || got != "" {
+		t.Fatalf("got %q err %v", got, err)
+	}
+}
+
+func TestBuildResumeRejectsOverLimit(t *testing.T) {
+	if _, err := BuildResume(strings.Repeat("a", maxResumeLen+1)); err == nil {
+		t.Fatal("over-limit resume must fail")
+	}
+}

@@ -98,7 +98,7 @@ func (w *Worker) Run(surface string) {
 		}
 		err := w.Pane.Send(surface, claimed.Command)
 		if err == nil {
-			w.awaitConfirm(surface)
+			w.awaitConfirm(surface, claimed.Resume)
 			return
 		}
 		lastErr = err.Error()
@@ -118,15 +118,28 @@ func (w *Worker) stableIdle(surface string) bool {
 	return err == nil && IsIdle(second)
 }
 
-func (w *Worker) awaitConfirm(surface string) {
+func (w *Worker) awaitConfirm(surface, resume string) {
 	deadline := w.Now().Add(w.ConfirmTimeout)
 	for w.Now().Before(deadline) {
 		if _, ok := w.Store.Read(surface, pending.StateInFlight); !ok {
+			if _, confirmed := w.Store.Read(surface, pending.StateConfirmed); confirmed && resume != "" {
+				w.sendResume(surface, resume)
+			}
 			return
 		}
 		w.Sleep(w.Poll)
 	}
 	w.Store.Fail(surface, "sent, but no post-compaction signal arrived")
+}
+
+func (w *Worker) sendResume(surface, message string) {
+	deadline := w.Now().Add(w.SendDeadline)
+	for w.Now().Before(deadline) {
+		if w.stableIdle(surface) && w.Pane.Send(surface, message) == nil {
+			return
+		}
+		w.Sleep(w.Poll)
+	}
 }
 
 func Spawn(surface string) error {

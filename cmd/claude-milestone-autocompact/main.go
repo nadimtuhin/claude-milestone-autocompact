@@ -16,6 +16,7 @@ type compactInput struct {
 	Milestone string   `json:"milestone" jsonschema:"what was just completed"`
 	Keep      []string `json:"keep" jsonschema:"what the summary must preserve: decisions, open TODOs, files being edited, failing tests, next step"`
 	Drop      []string `json:"drop" jsonschema:"what the summary may discard: raw tool output, dead ends, superseded plans, file dumps"`
+	Resume    string   `json:"resume,omitempty" jsonschema:"optional one-line message typed after compaction finishes so work continues, e.g. continue with the next task in the plan; omit to stop after compaction"`
 }
 
 func main() {
@@ -58,8 +59,12 @@ func queueCompaction(_ context.Context, _ *mcp.CallToolRequest, in compactInput)
 	if err != nil {
 		return nil, nil, err
 	}
+	resume, err := command.BuildResume(in.Resume)
+	if err != nil {
+		return nil, nil, err
+	}
 	surface := os.Getenv("CMUX_SURFACE_ID")
-	if _, err := pending.DefaultStore().Enqueue(surface, cmd); err != nil {
+	if _, err := pending.DefaultStore().EnqueueWithResume(surface, cmd, resume); err != nil {
 		return nil, nil, err
 	}
 	if err := worker.Spawn(surface); err != nil {

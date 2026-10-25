@@ -7,6 +7,9 @@ Claude cannot run `/compact` itself (slash commands are user-only). This MCP ser
 `/compact Milestone: … KEEP: … DROP: …` into the [cmux](https://cmux.com) pane once the prompt is idle.
 It never uses `--force`, so it will not overwrite a draft you are typing.
 
+Optional `resume`: a one-line message typed after compaction is confirmed, so work continues without you.
+Omit it and the pane idles after compaction.
+
 ## Install
 
 ```sh

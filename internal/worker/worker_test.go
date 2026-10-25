@@ -273,3 +273,53 @@ func TestWorkerOuterCapExpires(t *testing.T) {
 		t.Fatalf("expected failed with outer cap, got %+v", got)
 	}
 }
+
+func resumeWorker(t *testing.T, pane *fakePane, resume string, confirm bool) *Worker {
+	w, clock := testWorker(t, pane)
+	w.Store.EnqueueWithResume("s", "/compact x", resume)
+	*clock = clock.Add(time.Second)
+	w.Store.MarkStopped("s")
+	w.Sleep = func(d time.Duration) {
+		*clock = clock.Add(d)
+		if len(pane.sent) == 1 {
+			if confirm {
+				w.Store.Confirm("s")
+			} else {
+				w.Store.Fail("s", "compaction did not run")
+			}
+		}
+	}
+	return w
+}
+
+func TestWorkerTypesResumeAfterConfirmation(t *testing.T) {
+	pane := &fakePane{screens: []string{idleScreen}}
+	resumeWorker(t, pane, "carry on with the plan", true).Run("s")
+	if len(pane.sent) != 2 || pane.sent[1] != "carry on with the plan" {
+		t.Fatalf("sent %v", pane.sent)
+	}
+}
+
+func TestWorkerWithoutResumeSendsOnlyCompact(t *testing.T) {
+	pane := &fakePane{screens: []string{idleScreen}}
+	resumeWorker(t, pane, "", true).Run("s")
+	if len(pane.sent) != 1 {
+		t.Fatalf("sent %v", pane.sent)
+	}
+}
+
+func TestWorkerSkipsResumeWhenCompactionNeverConfirmed(t *testing.T) {
+	pane := &fakePane{screens: []string{idleScreen}}
+	resumeWorker(t, pane, "carry on", false).Run("s")
+	if len(pane.sent) != 1 {
+		t.Fatalf("resume must not be sent without confirmation, sent %v", pane.sent)
+	}
+}
+
+func TestWorkerResumeWaitsForIdle(t *testing.T) {
+	pane := &fakePane{screens: []string{idleScreen, idleScreen, busyScreen, busyScreen, idleScreen}}
+	resumeWorker(t, pane, "carry on", true).Run("s")
+	if len(pane.sent) != 2 {
+		t.Fatalf("sent %v", pane.sent)
+	}
+}
