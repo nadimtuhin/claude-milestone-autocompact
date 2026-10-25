@@ -64,6 +64,41 @@ func TestIsIdleFalseWhileSpinnerPastOneMinute(t *testing.T) {
 	}
 }
 
+func TestIsIdleFalseWhenLastPromptIsDialog(t *testing.T) {
+	screen := "Do you trust this folder?\n❯ 1. Yes, I trust this folder\n  2. No\n"
+	if IsIdle(screen) {
+		t.Fatal("last prompt is dialog option, must not be idle")
+	}
+}
+
+func TestIsIdleFalseWhenLastPromptIsEchoedCommand(t *testing.T) {
+	screen := "❯ /compact Milestone: x.\nrunning...\n"
+	if IsIdle(screen) {
+		t.Fatal("last prompt is echoed command, must not be idle")
+	}
+}
+
+func TestIsIdleFalseWhenLastPromptIsDraft(t *testing.T) {
+	screen := "────\n❯ half typed draft\n────\n"
+	if IsIdle(screen) {
+		t.Fatal("last prompt is draft, must not be idle")
+	}
+}
+
+func TestIsIdleTrueWhenEchoedPromptFollowedByEmptyPrompt(t *testing.T) {
+	screen := "❯ do the thing\noutput\n❯ \n"
+	if !IsIdle(screen) {
+		t.Fatal("echoed prompt followed by empty prompt must be idle")
+	}
+}
+
+func TestIsIdleFalseWhenNoPromptLine(t *testing.T) {
+	screen := "output line 1\noutput line 2\n"
+	if IsIdle(screen) {
+		t.Fatal("no prompt line must not be idle")
+	}
+}
+
 func TestWorkerWaitsForIdleThenSendsOnce(t *testing.T) {
 	pane := &fakePane{screens: []string{busyScreen, busyScreen, idleScreen}}
 	w, _ := testWorker(t, pane)
