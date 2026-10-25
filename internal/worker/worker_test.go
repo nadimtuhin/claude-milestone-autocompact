@@ -126,3 +126,10 @@ func TestSecondWorkerExitsWhileLockHeld(t *testing.T) {
 		t.Fatal("second worker must not send")
 	}
 }
+
+func TestNewWorkerConfirmTimeout(t *testing.T) {
+	w := NewWorker()
+	if w.ConfirmTimeout != 10*time.Minute {
+		t.Fatalf("ConfirmTimeout = %v, want %v", w.ConfirmTimeout, 10*time.Minute)
+	}
+}

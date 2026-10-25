@@ -20,6 +20,8 @@ const (
 	StateFailed    State = "failed"
 )
 
+const staleRequestAge = 10 * time.Minute
+
 type Request struct {
 	ID          string `json:"id"`
 	Surface     string `json:"surface"`
@@ -97,7 +99,11 @@ func (s *Store) Enqueue(surface, command string) (Request, error) {
 		return Request{}, errors.New("CMUX_SURFACE_ID is not set; run Claude Code inside a cmux pane")
 	}
 	for _, active := range []State{StateQueued, StateInFlight} {
-		if _, ok := s.Read(surface, active); ok {
+		if req, ok := s.Read(surface, active); ok {
+			if s.Now().Sub(time.Unix(req.RequestedAt, 0)) > staleRequestAge {
+				os.Remove(s.path(surface, active))
+				continue
+			}
 			return Request{}, fmt.Errorf("a compaction request is already %s for this pane", active)
 		}
 	}

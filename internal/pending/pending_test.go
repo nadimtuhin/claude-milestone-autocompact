@@ -108,3 +108,70 @@ func TestFailRecordsReason(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+func TestEnqueueOverwritesStaleQueuedRequest(t *testing.T) {
+	s := newTestStore(t)
+	oldReq, err := s.Enqueue("a", "/compact 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return time.Unix(1000, 0).Add(11 * time.Minute) }
+	newReq, err := s.Enqueue("a", "/compact 2")
+	if err != nil {
+		t.Fatalf("enqueue over stale queued request should succeed: %v", err)
+	}
+	if newReq.ID == oldReq.ID {
+		t.Fatal("expected new request ID")
+	}
+	got, ok := s.Get("a")
+	if !ok || got.ID != newReq.ID || got.Command != "/compact 2" {
+		t.Fatalf("unexpected request in store: %+v", got)
+	}
+}
+
+func TestEnqueueOverwritesStaleInFlightRequest(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.Enqueue("a", "/compact 1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.Claim("a"); !ok {
+		t.Fatal("claim failed")
+	}
+	s.Now = func() time.Time { return time.Unix(1000, 0).Add(11 * time.Minute) }
+	newReq, err := s.Enqueue("a", "/compact 2")
+	if err != nil {
+		t.Fatalf("enqueue over stale in_flight request should succeed: %v", err)
+	}
+	if _, ok := s.Read("a", StateInFlight); ok {
+		t.Fatal("stale in_flight file still exists")
+	}
+	got, ok := s.Get("a")
+	if !ok || got.ID != newReq.ID || got.Command != "/compact 2" || got.State != StateQueued {
+		t.Fatalf("unexpected request in store: %+v", got)
+	}
+}
+
+func TestEnqueueRejectsFreshQueuedRequest(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.Enqueue("a", "/compact 1"); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = func() time.Time { return time.Unix(1000, 0).Add(9 * time.Minute) }
+	if _, err := s.Enqueue("a", "/compact 2"); err == nil {
+		t.Fatal("enqueue over fresh queued request must fail")
+	}
+}
+
+func TestEnqueueRejectsFreshInFlightRequest(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.Enqueue("a", "/compact 1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.Claim("a"); !ok {
+		t.Fatal("claim failed")
+	}
+	s.Now = func() time.Time { return time.Unix(1000, 0).Add(9 * time.Minute) }
+	if _, err := s.Enqueue("a", "/compact 2"); err == nil {
+		t.Fatal("enqueue over fresh in_flight request must fail")
+	}
+}
