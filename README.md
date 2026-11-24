@@ -17,11 +17,26 @@ go build -o claude-milestone-autocompact ./cmd/claude-milestone-autocompact
 claude mcp add --scope user claude-milestone-autocompact -- "$PWD/claude-milestone-autocompact" serve
 ```
 
-Add the hook to the `Stop`, `PostCompact` and `SessionStart` (matcher `compact`) lists in `~/.claude/settings.json`:
+Merge the hooks into `~/.claude/settings.json` (replace `/path/to` with the binary's absolute path):
 
 ```json
-{ "hooks": [{ "type": "command", "command": "/path/to/claude-milestone-autocompact hook", "timeout": 10 }] }
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "/path/to/claude-milestone-autocompact hook", "timeout": 10 }] }
+    ],
+    "PostCompact": [
+      { "hooks": [{ "type": "command", "command": "/path/to/claude-milestone-autocompact hook", "timeout": 10 }] }
+    ],
+    "SessionStart": [
+      { "matcher": "compact", "hooks": [{ "type": "command", "command": "/path/to/claude-milestone-autocompact hook", "timeout": 10 }] }
+    ]
+  }
+}
 ```
+
+The `SessionStart` (`compact`) hook is required: it is the only one whose output Claude sees, so it carries the
+resume notice. `PostCompact` only confirms the request early.
 
 ## How it works
 

@@ -472,3 +472,18 @@ func TestWorkerScenario4OuterCapElapsedWithRepeatedStopsFails(t *testing.T) {
 		t.Fatalf("elapsed=%v, want %v", clock.Sub(t0), 30*time.Minute)
 	}
 }
+
+// RequestedAt has one-second resolution; a Stop marker left by the previous request earlier in
+// the same second used to look newer than the request, so /compact was typed mid-turn.
+func TestWorkerIgnoresStopMarkerFromEarlierInSameSecond(t *testing.T) {
+	pane := &fakePane{screens: []string{idleScreen}}
+	w, clock := testWorker(t, pane)
+	*clock = time.Unix(1000, 300e6)
+	w.Store.MarkStopped("s")
+	*clock = time.Unix(1000, 700e6)
+	w.Store.Enqueue("s", "/compact x")
+	w.Run("s")
+	if len(pane.sent) != 0 {
+		t.Fatalf("typed %v before this request's turn stopped", pane.sent)
+	}
+}

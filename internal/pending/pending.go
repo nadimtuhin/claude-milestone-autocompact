@@ -48,6 +48,12 @@ func DefaultStore() *Store {
 	return &Store{Dir: dir, Now: time.Now}
 }
 
+// ValidSurface reports whether surface is safe to use as a file name inside the store directory.
+// why: the surface comes from CMUX_SURFACE_ID and argv; "../x" would read and write outside Dir.
+func ValidSurface(surface string) bool {
+	return surface != "" && surface != "." && surface != ".." && !strings.ContainsAny(surface, "/\\\x00")
+}
+
 func (s *Store) path(surface string, state State) string {
 	return filepath.Join(s.Dir, surface+"."+string(state)+".json")
 }
@@ -104,6 +110,9 @@ func (s *Store) EnqueueWithResume(surface, command, resume string) (Request, err
 	if surface == "" {
 		return Request{}, errors.New("CMUX_SURFACE_ID is not set; run Claude Code inside a cmux pane")
 	}
+	if !ValidSurface(surface) {
+		return Request{}, fmt.Errorf("invalid CMUX_SURFACE_ID %q", surface)
+	}
 	for _, active := range []State{StateQueued, StateInFlight} {
 		if req, ok := s.Read(surface, active); ok {
 			if s.Now().Sub(time.Unix(req.RequestedAt, 0)) > staleRequestAge {
@@ -120,6 +129,10 @@ func (s *Store) EnqueueWithResume(surface, command, resume string) (Request, err
 	req := Request{ID: hex.EncodeToString(id), Surface: surface, Command: command, Resume: resume, State: StateQueued, RequestedAt: s.Now().Unix()}
 	os.Remove(s.path(surface, StateFailed))
 	os.Remove(s.path(surface, StateConfirmed))
+	// why: RequestedAt has one-second resolution, so a Stop marker left by the previous request
+	// earlier in the same second would look newer than this request.
+	os.Remove(s.stoppedPath(surface))
+	os.Remove(s.announcedPath(surface))
 	return req, s.write(req)
 }
 
@@ -167,6 +180,9 @@ func (s *Store) workerLock(surface string) string { return filepath.Join(s.Dir, 
 const staleWorkerLock = 45 * time.Minute
 
 func (s *Store) AcquireWorker(surface string) bool {
+	if !ValidSurface(surface) {
+		return false
+	}
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return false
 	}
@@ -188,6 +204,9 @@ func (s *Store) stoppedPath(surface string) string {
 }
 
 func (s *Store) MarkStopped(surface string) error {
+	if !ValidSurface(surface) {
+		return fmt.Errorf("invalid surface %q", surface)
+	}
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
@@ -208,4 +227,21 @@ func (s *Store) StoppedAt(surface string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return t, true
+}
+
+func (s *Store) announcedPath(surface string) string {
+	return filepath.Join(s.Dir, surface+".announced")
+}
+
+// Announce reports true exactly once per confirmed request, so the resume notice is printed
+// by whichever post-compaction hook asks first and never again for unrelated compactions.
+func (s *Store) Announce(surface string) bool {
+	if _, ok := s.Read(surface, StateConfirmed); !ok {
+		return false
+	}
+	f, err := os.OpenFile(s.announcedPath(surface), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return false
+	}
+	return f.Close() == nil
 }
