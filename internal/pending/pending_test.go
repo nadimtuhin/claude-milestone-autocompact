@@ -231,3 +231,46 @@ func TestResumeSurvivesClaimAndConfirm(t *testing.T) {
 		t.Fatalf("confirmed %+v", got)
 	}
 }
+
+func TestEnqueueRejectsPathLikeSurface(t *testing.T) {
+	s := newTestStore(t)
+	for _, surface := range []string{"../escape", "a/b", "..", ".", `a\b`} {
+		if _, err := s.Enqueue(surface, "/compact"); err == nil {
+			t.Errorf("surface %q accepted", surface)
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Dir(s.Dir))
+	for _, e := range entries {
+		if e.Name() == "escape.queued.json" {
+			t.Fatal("request written outside the store directory")
+		}
+	}
+}
+
+func TestEnqueueAcceptsCmuxSurfaceIDs(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.Enqueue("3F2504E0-4F89-11D3-9A0C-0305E82C3301", "/compact"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnqueueClearsStopMarkerOfPreviousRequest(t *testing.T) {
+	s := newTestStore(t)
+	s.MarkStopped("a")
+	if _, err := s.Enqueue("a", "/compact"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.StoppedAt("a"); ok {
+		t.Fatal("a Stop from an earlier turn must not count for the new request")
+	}
+}
+
+func TestAcquireWorkerRefusesPathLikeSurface(t *testing.T) {
+	s := newTestStore(t)
+	if s.AcquireWorker("../a") {
+		t.Fatal("lock taken for a surface that escapes the store directory")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(s.Dir), "a.worker")); err == nil {
+		t.Fatal("worker lock created outside the store directory")
+	}
+}
